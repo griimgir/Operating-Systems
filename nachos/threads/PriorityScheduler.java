@@ -2,9 +2,8 @@ package nachos.threads;
 
 import nachos.machine.*;
 
-import java.util.TreeSet;
-import java.util.HashSet;
-import java.util.Iterator;
+
+import java.util.*;
 
 /**
  * A scheduler that chooses threads based on their priorities.
@@ -26,6 +25,7 @@ import java.util.Iterator;
  * A priority scheduler must partially solve the priority inversion problem; in
  * particular, priority must be donated through locks, and through joins.
  */
+
 public class PriorityScheduler extends Scheduler {
     /**
      * Allocate a new priority scheduler.
@@ -60,8 +60,7 @@ public class PriorityScheduler extends Scheduler {
     public void setPriority(KThread thread, int priority) {
 	Lib.assertTrue(Machine.interrupt().disabled());
 		       
-	Lib.assertTrue(priority >= priorityMinimum &&
-		   priority <= priorityMaximum);
+	Lib.assertTrue(priority >= priorityMinimum && priority <= priorityMaximum);
 	
 	getThreadState(thread).setPriority(priority);
     }
@@ -126,8 +125,13 @@ public class PriorityScheduler extends Scheduler {
      * A <tt>ThreadQueue</tt> that sorts threads by priority.
      */
     protected class PriorityQueue extends ThreadQueue {
-	PriorityQueue(boolean transferPriority) {
+    	    	
+    	PriorityQueue(boolean transferPriority) {
 	    this.transferPriority = transferPriority;
+	    
+	    if(transferPriority == true){
+	    	
+	    }
 	}
 
 	public void waitForAccess(KThread thread) {
@@ -140,10 +144,25 @@ public class PriorityScheduler extends Scheduler {
 	    getThreadState(thread).acquire(this);
 	}
 
+	
+	/*
+	Adapted from the nextThread() in RoundrobinScheduler
+	with an included sortQueue function to ensure we always
+	have the highest priority thread in front to pull from
+	*/
 	public KThread nextThread() {
 	    Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me
-	    return null;
+	    if(queue.isEmpty()){
+	    	return null;
+	    }else{
+	    	//Sort the queue to ensure the highest priority thread is on top
+	    	sortQueue();
+	    	
+	    	//Use LinkedLists removeFirst() function to select highest priority thread and remove it from the queue.
+	    	return (KThread) queue.removeFirst();
+	    	
+	    }
 	}
 
 	/**
@@ -153,14 +172,29 @@ public class PriorityScheduler extends Scheduler {
 	 * @return	the next thread that <tt>nextThread()</tt> would
 	 *		return.
 	 */
+	
+	
+	/*
+	 *Adapted from nextThread() with the difference being we only check
+	 *the thread that is at the front of the queue and don't actually
+	 *remove it from the queue.
+	 */
 	protected ThreadState pickNextThread() {
 	    // implement me
-	    return null;
+		if(queue.isEmpty()){
+			return null;
+		}else{
+			sortQueue();
+			return getThreadState(queue.peekFirst());
+		}
+		
 	}
 	
 	public void print() {
 	    Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me (if you want)
+	    
+	    //I really really don't want to
 	}
 
 	/**
@@ -168,6 +202,34 @@ public class PriorityScheduler extends Scheduler {
 	 * threads to the owning thread.
 	 */
 	public boolean transferPriority;
+	
+	
+	/*
+     * Helper function for picking a nextThread().
+     * Uses Collections.sort() to sort the queue based on priority
+     * This method of easily sorting I found on GeeksforGeeks
+     */
+	public void sortQueue(){
+		Collections.sort(queue, new Comparator<KThread>(){	
+			public int compare(KThread first,KThread second){
+				ThreadState threadOne = getThreadState(first);
+				ThreadState threadTwo = getThreadState(second);
+	    	
+	    			if(threadOne.getEffectivePriority() == threadTwo.getEffectivePriority()){
+	    				return 0;
+	    			}
+	    			if(threadOne.getEffectivePriority() < threadTwo.getEffectivePriority()){
+	    				return 1;
+	    			}else{
+	    				return -1;
+	    		}
+	    	}
+	    	});
+	    }
+	
+	public LinkedList<KThread> queue = new LinkedList<KThread>();
+
+	
     }
 
     /**
@@ -198,15 +260,39 @@ public class PriorityScheduler extends Scheduler {
 	public int getPriority() {
 	    return priority;
 	}
+	public LinkedList<KThread> queue = new LinkedList<KThread>();
 
+	public PriorityQueue newQueue;
 	/**
 	 * Return the effective priority of the associated thread.
 	 *
 	 * @return	the effective priority of the associated thread.
 	 */
+	
+	
 	public int getEffectivePriority() {
 	    // implement me
-	    return priority;
+		int tempPriority = 		this.priority;
+		KThread tempThread = 	this.thread;
+		double tempTimer = 		this.threadTimer;
+		
+		if (threadQueue == null || threadQueue.queue.isEmpty()) {
+			return priority;
+		}	
+		
+		for(int i = 0; i < threadQueue.queue.size(); i++) {
+			
+			if(tempPriority != priorityMaximum){
+				if(tempPriority == getThreadState(threadQueue.queue.get(i)).priority){
+					if(tempThread != getThreadState(threadQueue.queue.get(i)).thread ){
+						if(tempTimer < getThreadState(threadQueue.queue.get(i)).threadTimer){
+							return (tempPriority+1);
+						}
+					}
+				}
+			}
+		}	
+		return priority;	
 	}
 
 	/**
@@ -237,6 +323,16 @@ public class PriorityScheduler extends Scheduler {
 	 */
 	public void waitForAccess(PriorityQueue waitQueue) {
 	    // implement me
+		Lib.assertTrue(Machine.interrupt().disabled());
+		
+		PriorityQueue queue = waitQueue;
+		
+		waitQueue.queue.add(thread);
+		
+
+		threadTimer = Machine.timer().getTime();
+		threadQueue = waitQueue;	
+		
 	}
 
 	/**
@@ -250,12 +346,56 @@ public class PriorityScheduler extends Scheduler {
 	 * @see	nachos.threads.ThreadQueue#nextThread
 	 */
 	public void acquire(PriorityQueue waitQueue) {
+		Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me
-	}	
+		int tempTimer=0;
+		if(threadQueue != null){
+			if(!threadQueue.queue.isEmpty()){
+					if(waitQueue.transferPriority == true){
+						if(2 <= threadQueue.queue.size()){
+				
+		
+						for(int i=0; i<threadQueue.queue.size(); i++){
+							if (getThreadState(threadQueue.queue.get(i)).threadTimer < getThreadState(threadQueue.queue.get(tempTimer)).threadTimer) {
+								tempTimer = i;
+								
+							}
+						}
+						
+						if(priorityMaximum != getThreadState(waitQueue.queue.get(tempTimer)).getPriority()){
+							getThreadState(waitQueue.queue.get(tempTimer)).setPriority(getThreadState(thread).getPriority());
+
+						}
+						
+					}
+			
+				}
+				
+			
+			
+		
+	    waitQueue.queue.remove(thread);
+	    threadQueue = null; 
+	
+		
+		
+		
+			}	
+		}
+	}
 
 	/** The thread with which this object is associated. */	   
 	protected KThread thread;
 	/** The priority of the associated thread. */
 	protected int priority;
+	public PriorityQueue threadQueue;
+	public double threadTimer = 0;
+
+
     }
+   
+    
+
+
+    
 }
