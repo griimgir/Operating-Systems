@@ -276,7 +276,14 @@ public class KThread {
 	Lib.debug(dbgThread, "Joining to thread: " + toString());
 
 	Lib.assertTrue(this != currentThread);
+	//taskLock will disable inturrupts because join() needs to be atomic
+	boolean taskLock = Machine.interrupt().disabled();
 
+	while(this.status != statusFinished) {
+		sleep();
+	}
+
+	Machine.interrupt().restore(taskLock);
     }
 
     /**
@@ -335,7 +342,7 @@ public class KThread {
      */
     private void run() {
 	Lib.assertTrue(Machine.interrupt().disabled());
-
+	
 	Machine.yield();
 
 	currentThread.saveState();

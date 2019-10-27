@@ -32,10 +32,15 @@ public class Condition2 {
      */
     public void sleep() {
 	Lib.assertTrue(conditionLock.isHeldByCurrentThread());
-
+	//this declaration is called in every function in condition, this what makes these functions atomic
+	boolean status = Machine.interrupt().disable();
+	//add this thread to wait queue so it can be wake up again after being put to sleep
+	waitQueue.waitForAccess(KThread.currentThread());
 	conditionLock.release();
-
+	KThread.sleep();
 	conditionLock.acquire();
+	
+	Machine.interrupt().restore(status);
     }
 
     /**
@@ -44,6 +49,14 @@ public class Condition2 {
      */
     public void wake() {
 	Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+	boolean status = Machine.interrupt().disable();
+	//KThread wakeUp = waitQueue.nextThread();
+	KThread wakeUp;
+	if((wakeUp = waitQueue.nextThread()) != null) {
+		wakeUp.ready();
+	}
+	
+	Machine.interrupt().restore(status);
     }
 
     /**
@@ -52,7 +65,17 @@ public class Condition2 {
      */
     public void wakeAll() {
 	Lib.assertTrue(conditionLock.isHeldByCurrentThread());
+	boolean status = Machine.interrupt().disable();
+	//KThread wakeUp = waitQueue.nextThread();
+	KThread wakeUp = waitQueue.nextThread();
+	while((wakeUp = waitQueue.nextThread()) != null) {
+		wakeUp.ready();
+	}
+	
+	Machine.interrupt().restore(status);
     }
+    //wait queue for currentThreads in functions sleep() wake() and wakeAll()
+    private ThreadQueue waitQueue = ThreadedKernel.scheduler.newThreadQueue(false);
 
     private Lock conditionLock;
 }
