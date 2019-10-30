@@ -1,16 +1,39 @@
 package nachos.threads;
 
 import nachos.machine.*;
+import java.util.Iterator;
+import java.util.Comparator;
 import java.util.TreeSet;
 /**
  * Uses the hardware timer to provide preemption, and to allow threads to sleep
  * until a certain time.
  */
+
+
+
+ // extend the comparator to sort for increasing wake time
+class order implements Comparator <KThread>
+{
+	 public int compare(KThread ahead, KThread curr)
+	 {	
+	 	if(ahead.alarmT > curr.alarmT){ return 1;}
+	 	else if (ahead.alarmT < curr.alarmT){ return -1;}
+	 	else {return -1;}
+	 }
+
+//	 @Override
+//	 public int check(final KThread o1, final KThread o2) {
+//	 	if(o1.alarmT > o2.alarmT){ return 1;}
+//	 	else if (o1.alarmT < o2.alarmT){ return -1;}
+//	 	else {return -1;}
+//	 }
+}
+
 public class Alarm {
 	// CREATING A PRIVATE TREESET THAT CAN BE ONLY ACCESSES W/IN THIS CLASS
 	// TREESET BECAUSE IT'S AN ASCENDING SET, IMPLYING IT IS ALREADY SORTED 
 	// AND UNIQUE
-	private TreeSet<KThread> standbyQueue = new TreeSet<KThread>();
+	private TreeSet<KThread> standbyQueue = new TreeSet<KThread>(new order());
 	
 	// INITIALIZING wakeTime TO BE USED IN THE timerInterrupt AND waitUntil METHOD
 	private long wakeTime = 0L;
@@ -27,8 +50,11 @@ public class Alarm {
 		Machine.timer().setInterruptHandler(new Runnable() {
 			public void run() { timerInterrupt(); }
 		});
+		
+		//testing new lock for waitUntil
+		
 	}
-
+	
 	/**
 	 * The timer interrupt handler. This is called by the machine's timer
 	 * periodically (approximately every 500 clock ticks). Causes the current
@@ -36,19 +62,22 @@ public class Alarm {
 	 * that should be run.
 	 */
 	public void timerInterrupt() {
-		
-		// if ( standbyQueue is not empty){
-		if(!standbyQueue.isEmpty())									
-		{
 		//  systemCurrentTime = read time from system;
-			long currentSystemTime = Machine.timer().getTime();		
-			
-			// while ( systemCurrentTime is at least wakeUpTime){
-			while (currentSystemTime >= wakeTime)		
-
+		long currTime = Machine.timer().getTime();
+		Iterator<KThread> i = standbyQueue.iterator();
+		// if ( standbyQueue is not empty){
+		while(i.hasNext()) 
+		{
+			KThread front = i.next();
+			long currAlarm = front.alarmT;
+			// while ( currAlarm less than or equal to  currTime){
+			if(currAlarm <= currTime)
 			{
 				// place into standbyQueue’s readyQueue;
-				standbyQueue.pollFirst().ready();		
+    			front.ready();
+    			i.remove();
+			}else { 
+				break;
 			}
 		}
 		KThread.currentThread().yield();
@@ -72,18 +101,11 @@ public class Alarm {
 		// for now, cheat just to get something working (busy waiting is bad)
 		
 		// ASSIGN TO PRIVATE VARIABLE INSTANCE TO BE USED WITHIN THE CLASS
-		this.wakeTime = Machine.timer().getTime() + x;
-		
-		// while ( wakeUpTime  > systemCurrentTime){
-		while (wakeTime > Machine.timer().getTime())
-		{
-			
-			// ADD CURRENT THREAD TO standybyQueue
-			standbyQueue.add(KThread.currentThread());
-			KThread.yield();
-			
-			// ?????
-//			KThread.sleep();
-		}
+		this.wakeTime = Machine.timer().getTime() + x;	
+		KThread.currentThread().alarmT = wakeTime;
+		// ADD CURRENT THREAD TO standybyQueue
+		standbyQueue.add(KThread.currentThread());
+		KThread.yield();
+		// KThread.sleep();
 	}
 }
