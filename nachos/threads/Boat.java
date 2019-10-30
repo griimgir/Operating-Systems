@@ -1,6 +1,6 @@
 package nachos.threads;
-
 import nachos.ag.BoatGrader;
+import nachos.machine.*;
 
 public class Boat {
 
@@ -57,7 +57,9 @@ public static void begin( int adults, int children, BoatGrader b ) {
 	
 	int i = 0;
 	
-	for(i = 1; i <= children; i++ ) {
+	boolean disable = Machine.interrupt().disable();
+	
+	for(i = 0; i < children; i++ ) {
 		Runnable childThread = new Runnable() {
 			public void run() {
 				ChildItinerary();
@@ -68,7 +70,7 @@ public static void begin( int adults, int children, BoatGrader b ) {
 		t.fork();		
 	} 
 
-	for(i = 1; i <= adults; i++) {
+	for(i = 0; i < adults; i++) {
 		Runnable adultThread = new Runnable() {
 			public void run() {
 				AdultItinerary();
@@ -79,10 +81,13 @@ public static void begin( int adults, int children, BoatGrader b ) {
 		t.fork();		
 	}
 	
+	Machine.interrupt().restore(disable);
+	
 	KThread.yield();
 	
 	if (childrenOnOahu == 0 && adultsOnOahu == 0 && childrenOnMolokai == totalChildren && adultsOnMolokai == totalAdults) {
 		System.out.println("Finish Boat.begin()");
+		//KThread.finish();
 	}
 	
 }
@@ -91,11 +96,20 @@ public static void begin( int adults, int children, BoatGrader b ) {
     // If children leave Molokai, then decrement childrenOnMolokai and increment children on Oahu. 
     static void AdultItinerary() {
     
+        boatLock.acquire();						// Count all the adults on Oahu
+        
+        adultsOnOahu++;
+        waitingForBoat.sleep();
+        
+        boatLock.release();
+        
+        //KThread.yield();
+        
         boatLock.acquire();
 
         if (boatLocation == "Oahu") {
-            while (childrenOnOahu <= 1 && adultsOnOahu >= 1 && pilot == "EMPTY") {
-
+            if (childrenOnOahu <= 1 && adultsOnOahu >= 1 && pilot == "EMPTY") {
+            	
                 pilot = "adult";                // Setting pilot
 
                 adultsOnOahu--;                 // Even though we can't have threads communicate to each other we can here
@@ -105,9 +119,8 @@ public static void begin( int adults, int children, BoatGrader b ) {
                 boatLocation = "Molokai";
                 
                 pilot = "EMPTY";                // Emptying the boat
-                break;
-
             }
+            
             waitingForBoat.wake();				// Wakes up a thread in the waiting queue, if there are any. Places a thread on the ready queue
             waitingForBoat.sleep();				// Tells the current thread to suspend all activities and says the thread is done
         }
@@ -119,66 +132,76 @@ public static void begin( int adults, int children, BoatGrader b ) {
 
     static void ChildItinerary() {
     
+    	boatLock.acquire();						// Count all the children on Oahu
+    	
+    	childrenOnOahu++;
+    	waitingForBoat.sleep();
+    	
+    	boatLock.release();
+    	
+    	//KThread.yield();
+    	
     	boatLock.acquire();
+    	
+    	while (childrenOnOahu > 0) {
     		
-		// When the boat is on Oahu
-		if (boatLocation == "Oahu") {
-    			
-			// No one is on the boat
-			if (pilot == "EMPTY") {
-    				
-				// should take two children 
-				if (childrenOnOahu > 1) {
-    					
-					pilot = "child";
-					waitingForBoat.wake();		// Wake up a second child thread
-					waitingForBoat.sleep();		// Make the current child thread go to sleep
+    		// When the boat is on Oahu
+			if (boatLocation == "Oahu") {
+	    		
+				// No one is on the boat
+				if (pilot == "EMPTY") {
+	    				
+					// should take two children 
+					if (childrenOnOahu >= 2) {
+	    					
+						pilot = "child";
+						waitingForBoat.wake();		// Wake up a second child thread
+						waitingForBoat.sleep();		// Make the current child thread go to sleep
+					}
 				}
-    				
-				// last child to Oahu, then finish
-				else if (childrenOnOahu == 1 && adultsOnOahu == 0) {
-    					 
-					pilot = "child";
+	    			
+				else if (pilot == "child") {
+					
+					// Grabs a child as a passenger send both children to Molokai
+					childrenOnOahu--;
 					childrenOnOahu--;
 					bg.ChildRowToMolokai();
+					bg.ChildRideToMolokai();
 					childrenOnMolokai++;
-					pilot = "EMPTY";			// Might not matter if it is empty at the end
-    					
-					waitingForBoat.wake();		// Attempts to wake any remaining adults/children on Oahu
-					//break;
+					childrenOnMolokai++;
+					pilot = "EMPTY";
 				}
+	    			
+				boatLocation = "Molokai";
 			}
-    			
-			else if (pilot == "child") {
+	    		
+			else if (boatLocation == "Molokai" && pilot == "EMPTY" && childrenOnOahu >= 1) {
+	    			
+				pilot = "child";
 				
-				// Grabs a child as a passenger send both children to Molokai
-				childrenOnOahu--;
-				childrenOnOahu--;
-				bg.ChildRowToMolokai();
-				bg.ChildRideToMolokai();
-				childrenOnMolokai++;
-				childrenOnMolokai++;
+				if (childrenOnOahu == 1 && adultsOnOahu == 0) {
+					
+					childrenOnMolokai--;
+					bg.ChildRowToOahu();
+					childrenOnOahu++;
+					
+					waitingForBoat.wake();
+					waitingForBoat.sleep();
+				}
+	
+				childrenOnMolokai--;
+				bg.ChildRowToOahu();
+				childrenOnOahu++;
 				pilot = "EMPTY";
 			}
-    			
-			boatLocation = "Molokai";
-		}
-    		
-		else if (boatLocation == "Molokai" && pilot == "EMPTY") {
-    			
-			pilot = "child";
-			childrenOnMolokai--;
-			bg.ChildRowToOahu();
-			childrenOnOahu++;
-			pilot = "EMPTY";
-		}
-    	
-	boatLock.release();
-	
-	waitingForBoat.wake();
-	waitingForBoat.sleep();
-    	
-	KThread.finish();
+	    	
+		boatLock.release();
+		
+		waitingForBoat.wake();
+		waitingForBoat.sleep();
+	    	
+		KThread.finish();
+	}
 }
     
     /*static void SampleItinerary()
