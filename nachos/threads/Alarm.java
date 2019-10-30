@@ -13,20 +13,16 @@ import java.util.TreeSet;
 
  // extend the comparator to sort for increasing wake time
 class order implements Comparator <KThread>
-{
+{	
+	// implements comparison for sorting for the comparator argument passed 
+	// into treeset
 	 public int compare(KThread ahead, KThread curr)
 	 {	
+		// if the next thread's alarm is > current thread's alarm
 	 	if(ahead.alarmT > curr.alarmT){ return 1;}
 	 	else if (ahead.alarmT < curr.alarmT){ return -1;}
 	 	else {return -1;}
 	 }
-
-//	 @Override
-//	 public int check(final KThread o1, final KThread o2) {
-//	 	if(o1.alarmT > o2.alarmT){ return 1;}
-//	 	else if (o1.alarmT < o2.alarmT){ return -1;}
-//	 	else {return -1;}
-//	 }
 }
 
 public class Alarm {
@@ -66,15 +62,20 @@ public class Alarm {
 		long currTime = Machine.timer().getTime();
 		Iterator<KThread> i = standbyQueue.iterator();
 		// if ( standbyQueue is not empty){
+		
+		// As long as there are elements in tree 
 		while(i.hasNext()) 
 		{
+			// house keeping for nomenclature
 			KThread front = i.next();
 			long currAlarm = front.alarmT;
+			
 			// while ( currAlarm less than or equal to  currTime){
 			if(currAlarm <= currTime)
 			{
 				// place into standbyQueue’s readyQueue;
     			front.ready();
+    			// remove from tree
     			i.remove();
 			}else { 
 				break;
