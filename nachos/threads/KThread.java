@@ -43,6 +43,7 @@ public class KThread {
      * create an idle thread as well.
      */
     public KThread() {
+    //setDueTime(-1);	
 	if (currentThread != null) {
 	    tcb = new TCB();
 	}	    
@@ -181,10 +182,23 @@ public class KThread {
      * destroyed automatically by the next thread to run, when it is safe to
      * delete this thread.
      */
+    //alarm for threads
+    public KThread setAlarm(long alarm) {
+    	this.alarmT = alarm;
+    	return this;
+    }
+    public long getAlarm() {
+    	return alarmT;
+    }
+    
     public static void finish() {
 	Lib.debug(dbgThread, "Finishing thread: " + currentThread.toString());
 	
 	Machine.interrupt().disable();
+	
+	//Test------------------------------------------------
+
+	//Test------------------------------------------------
 
 	Machine.autoGrader().finishingCurrentThread();
 
@@ -193,8 +207,10 @@ public class KThread {
 
 
 	currentThread.status = statusFinished;
-	
-	sleep();
+	if(sleepQueue != null) {
+		sleepQueue.nextThread().ready();
+	}sleep();
+    
     }
 
     /**
@@ -277,13 +293,44 @@ public class KThread {
 
 	Lib.assertTrue(this != currentThread);
 	//taskLock will disable inturrupts because join() needs to be atomic
-	boolean taskLock = Machine.interrupt().disabled();
+//	boolean taskLock = Machine.interrupt().disabled();
 
-	while(this.status != statusFinished) {
-		sleep();
+	//since join() is called it is now true
+	if(this.join == false) {
+		this.join = true;
+	//status in which it checks if the function is now atomic
+	boolean task = Machine.interrupt().disable();
+	//currentThread's existence check
+	while(this.status != 4) {
+		sleepQueue = ThreadedKernel.scheduler.newThreadQueue(true);
+		sleepQueue.waitForAccess(currentThread);
+		currentThread.sleep();
+	}	Machine.interrupt().restore(task);
+	
+	}else {
+		//this else statement was recieved help from help from upperclassman in Networks2 Grad course
+		System.out.println("Thread already joined!");
+		//termination
+		Machine.halt();
 	}
+//	while(this.status != statusFinished) {
+//		sleep();
+//	}
 
-	Machine.interrupt().restore(taskLock);
+	//Test2 -----------------------------------------------------------------------
+	
+	//These series of if and else I have recieved help from upperclassmen because my while loo[ for join would not work for other classes like Condition 2 -messga by:Ej Salcedo
+//	if(addQueue == null) {
+//		addQueue = ThreadedKernel.scheduler.newThreadQueue(true);
+//		addQueue.acquire(this);
+//	}
+//	if(this != currentThread && status != statusFinished) {
+//		addQueue.waitForAccess(currentThread);
+//		KThread.sleep();
+//	}
+//	
+	//Test2 -----------------------------------------------------------------------
+
     }
 
     /**
@@ -438,6 +485,8 @@ public class KThread {
     private String name = "(unnamed thread)";
     private Runnable target;
     private TCB tcb;
+    //private ThreadQueue addQueue = null;
+    private boolean join = false;
 
     /**
      * Unique identifer for this thread. Used to deterministically compare
@@ -451,4 +500,6 @@ public class KThread {
     private static KThread currentThread = null;
     private static KThread toBeDestroyed = null;
     private static KThread idleThread = null;
+    private static ThreadQueue sleepQueue = null;
+    public long alarmT = 0;
 }

@@ -1,7 +1,6 @@
 package nachos.threads;
 import nachos.machine.*;
 import java.util.*;
-
 /**
  * A scheduler that chooses threads based on their priorities.
  *
@@ -22,6 +21,7 @@ import java.util.*;
  * A priority scheduler must partially solve the priority inversion problem; in
  * particular, priority must be donated through locks, and through joins.
  */
+
 
 public class PriorityScheduler extends Scheduler {
     /**
@@ -57,8 +57,8 @@ public class PriorityScheduler extends Scheduler {
     public void setPriority(KThread thread, int priority) {
 	Lib.assertTrue(Machine.interrupt().disabled());
 		       
-	Lib.assertTrue(priority >= priorityMinimum && priority <= priorityMaximum);
-	
+	Lib.assertTrue(priority >= priorityMinimum &&
+			priority <= priorityMaximum);
 	getThreadState(thread).setPriority(priority);
     }
 
@@ -76,7 +76,6 @@ public class PriorityScheduler extends Scheduler {
 	Machine.interrupt().restore(intStatus);
 	return true;
     }
-
     public boolean decreasePriority() {
 	boolean intStatus = Machine.interrupt().disable();
 		       
@@ -122,45 +121,84 @@ public class PriorityScheduler extends Scheduler {
      * A <tt>ThreadQueue</tt> that sorts threads by priority.
      */
     protected class PriorityQueue extends ThreadQueue {
-    	    	
-    	PriorityQueue(boolean transferPriority) {
+    	//T/F to transfer a threads priority or not
+    	public boolean transferPriority;
+    	
+    	//New queue of threads
+		public java.util.PriorityQueue<ThreadState> threadList;
+		
+		//Owner of the thread
+		protected ThreadState threadHead = null;
+		
+	PriorityQueue(boolean transferPriority) {
 	    this.transferPriority = transferPriority;
 	    
-	    if(transferPriority == true){
+	    //Check if transfer is authorized or not
+	    if (transferPriority == false) {
 	    	
-	    }
+	    	//If no: return thread with no changes
+			this.threadList = new java.util.PriorityQueue<ThreadState>(11);
+			
+		} else {
+			
+			//If yes: use compare() and its helper function to adjust the state
+			this.threadList = new java.util.PriorityQueue<ThreadState>(11, new compare());
+		}
 	}
 
 	public void waitForAccess(KThread thread) {
 	    Lib.assertTrue(Machine.interrupt().disabled());
-	    getThreadState(thread).waitForAccess(this);
+	    
+	    //Helper variable to easily get thread's state
+	    ThreadState tempState = getThreadState(thread);
+	    
+	    //add the thread to the list
+	    threadList.add(tempState);
+
+	    //For loop to set all threads to min
+		for(ThreadState i : threadList) {
+			
+			i.effectivePriority = (priorityMinimum - 1);
+			
+		}
+		
+	    tempState.waitForAccess(this);
+	    
 	}
 
 	public void acquire(KThread thread) {
+		//Disable interrupts
 	    Lib.assertTrue(Machine.interrupt().disabled());
-	    getThreadState(thread).acquire(this);
+	    
+	    //Helper variable
+	    ThreadState tempState = getThreadState(thread);
+	    
+	    //Call acquire with helper
+	    tempState.acquire(this);
 	}
 
-	
-	/*
-	Built from the nextThread() in RoundrobinScheduler
-	with an included sortQueue function to ensure we always
-	have the highest priority thread in front to pull from
-	*/
 	public KThread nextThread() {
 	    Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me
 	    
-	    //Check that there is a thread waiting in the queue
-	    if(queue.isEmpty()){
+	    //Check if there is a thread in queue
+	    if(pickNextThread() == null) {
+	    	
+	    	//If there isn't, return null and set a null flag on the queue
+	    	threadHead = null;
+	    	
 	    	return null;
 	    }else{
-	    	
-	    	//Sort the queue to ensure the highest priority thread is on top
-	    	sortQueue();
-	    	
-	    	//Use LinkedLists removeFirst() function to select highest priority thread and remove it from the queue.
-	    	return (KThread) queue.removeFirst();	
+	    //If there's a thread on queue we poll to call the next one
+	    threadHead = threadList.poll();
+	    
+	    //Call helper function getThread to access the thread
+	    KThread tempThread = threadHead.getThread();
+
+		acquire(tempThread);
+		
+		return tempThread; 
+	
 	    }
 	}
 
@@ -172,75 +210,33 @@ public class PriorityScheduler extends Scheduler {
 	 *		return.
 	 */
 	
-	
-	/*
-	 *Adapted from nextThread() with the difference being we only check
-	 *the thread that is at the front of the queue and don't actually
-	 *remove it from the queue.
-	 */
 	protected ThreadState pickNextThread() {
 	    // implement me
 		
-	    //Check that there is a thread waiting in the queue
-		if(queue.isEmpty()){
+		//Look at the next thread in queue
+		ThreadState nextThread = threadList.peek();
+		
+		//If next thread is null, we return null
+		if(nextThread == null) {
+			
 			return null;
 			
-		}else{
+		}else {
 			
-	    	//Sort the queue to ensure the highest priority thread is on top
-			sortQueue();
-			
-			//Use the peekFirst() function to see the first thread in the queue without needing to remove it.
-			return getThreadState(queue.peekFirst());
-		}	
+			//if its not null we return the next thread
+			return nextThread;
+		}
 	}
 	
 	public void print() {
 	    Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me (if you want)
-	    //I really really don't want to
+	    //I REAAALLLLLLYYYYYY don't want to.
 	}
-
 	/**
 	 * <tt>true</tt> if this queue should transfer priority from waiting
 	 * threads to the owning thread.
 	 */
-	public boolean transferPriority;
-	
-	
-	/*
-     * Helper function for picking a nextThread() and pickNextThread()
-     * Uses Collections.sort() to sort the queue based on priority
-     * This method of easily sorting I found on GeeksforGeeks
-     */
-	public void sortQueue(){
-		
-		//Uses Collection Sort to sort the thread each time this method is called.
-		Collections.sort(queue, new Comparator<KThread>(){	
-			
-			//The compare function for the comparator, using default return values
-			public int compare(KThread first,KThread second){
-				
-				//Setting threadStates for different threads to a variable
-				ThreadState threadOne = getThreadState(first);
-				ThreadState threadTwo = getThreadState(second);
-	    	
-					//Comparison if statements to find a proper return value
-	    			if(threadOne.getEffectivePriority() == threadTwo.getEffectivePriority()){//Check if priorities are equal
-	    				return 0;
-	    			}
-	    			if(threadOne.getEffectivePriority() < threadTwo.getEffectivePriority()){//Check which thread has a higher priority
-	    				return 1;
-	    			}else{
-	    				return -1;
-	    		}
-	    	}
-	    	});
-	    }
-	
-	public LinkedList<KThread> queue = new LinkedList<KThread>(); //Create the queue which we will put the threads on.
-
-	
     }
 
     /**
@@ -250,7 +246,21 @@ public class PriorityScheduler extends Scheduler {
      *
      * @see	nachos.threads.KThread#schedulingState
      */
-    protected class ThreadState {
+    protected class ThreadState implements Comparable<ThreadState> {
+    	
+    	protected KThread thread;
+    	protected int priority;
+    	
+    	//Initialize effectivePriority variable to be min possible
+    	protected int effectivePriority = priorityMinimum - 1;
+    	
+    	//make a new priority queue
+    	protected PriorityQueue queue;
+    	
+    	//Set of threads
+    	protected LinkedList<PriorityQueue> waitThreads;
+    	
+    	
 	/**
 	 * Allocate a new <tt>ThreadState</tt> object and associate it with the
 	 * specified thread.
@@ -258,9 +268,13 @@ public class PriorityScheduler extends Scheduler {
 	 * @param	thread	the thread this state belongs to.
 	 */
 	public ThreadState(KThread thread) {
-	    this.thread = thread;
-	    
-	    setPriority(priorityDefault);
+		
+		
+		//Default initializing variables for when this method is called to default priority queue
+		this.thread = thread;
+		this.priority = priorityDefault;
+		this.queue = null;
+		this.waitThreads = new LinkedList<PriorityQueue>();
 	}
 
 	/**
@@ -268,66 +282,68 @@ public class PriorityScheduler extends Scheduler {
 	 *
 	 * @return	the priority of the associated thread.
 	 */
+	
+	//Helper function to easily get a threads priority
 	public int getPriority() {
 	    return priority;
 	}
-	public LinkedList<KThread> queue = new LinkedList<KThread>();
 
-	public PriorityQueue newQueue;
 	/**
 	 * Return the effective priority of the associated thread.
 	 *
 	 * @return	the effective priority of the associated thread.
 	 */
-	
-	
 	public int getEffectivePriority() {
-	    // implement me
-		
-		//Set temp variables to hold priority, thread, and the timer.
-		int tempPriority = 		this.priority;
-		KThread tempThread = 	this.thread;
-		double tempTimer = 		this.threadTimer;
-		
-		//Check is the current queue is empty
-		if (threadQueue == null || threadQueue.queue.isEmpty()) {
-			return priority;
-		}	
-		
-		//for loop to balance out thread's effective priorities AS WELL AS sort what threads have been on the queue the longest
-		for(int i = 0; i < threadQueue.queue.size(); i++) {
+		//Ensure our priority is minimum
+		if (effectivePriority <= priorityMinimum - 1) {
 			
-			//Ensure we don't increase the priority to be more than the max
-			if(tempPriority < priorityMaximum){
+			
+			//I,J,K for loop to check which thread has a higher effective Priority
+			for (PriorityQueue i : waitThreads) {
 				
-				//Check that the two threads DO indeed have the same priority
-				if(tempPriority == getThreadState(threadQueue.queue.get(i)).priority){
+				for (ThreadState j : i.threadList) {
 					
-					//Make sure it is two different threads. (Included with a bug fix from GeeksForGeeks)
-					if(tempThread != getThreadState(threadQueue.queue.get(i)).thread ){
+					if (j != this) {
 						
-						//Check that the thread has been on the queue longer
-						if(tempTimer < getThreadState(threadQueue.queue.get(i)).threadTimer){
+						int k = j.getEffectivePriority();
+					
+						if (k > effectivePriority) {
 							
-							//If a thread has the same priority, is less than the max, and has been on the queue longer, increase its priority
-							return (tempPriority+1);
+							effectivePriority = k;
 						}
 					}
 				}
 			}
-		}	
-		return priority;	
-	}
+		}
 
+		//Method of finding the higher priority, method found on GeeksForGeeks
+		effectivePriority = Math.max(effectivePriority, priority);
+
+		return effectivePriority;
+	}
+	
+	//Method to return a thread if needed
+	public KThread getThread() {
+		return thread;
+	}
+	
 	/**
 	 * Set the priority of the associated thread to the specified value.
 	 *
 	 * @param	priority	the new priority.
 	 */
+	
 	public void setPriority(int priority) {
-	    if (this.priority == priority)
-		return;
-	    this.priority = priority;
+		//Check if the priorities even need to be set
+	    if (this.priority == priority) {
+	    	return;
+	    }
+	    
+	    //Set the priorities based on the priority we are given to set
+	    //This method of using math was found on GeeksForGeeks
+		this.priority = Math.min(Math.max(priority, priorityMinimum), priorityMaximum);
+		
+		this.effectivePriority = priorityMinimum - 1;
 	}
 
 	/**
@@ -342,19 +358,13 @@ public class PriorityScheduler extends Scheduler {
 	 *
 	 * @see	nachos.threads.ThreadQueue#waitForAccess
 	 */
+	
 	public void waitForAccess(PriorityQueue waitQueue) {
 	    // implement me
 		
-		//Disable interrupts
-		Lib.assertTrue(Machine.interrupt().disabled());
-		
-		//Add thread to queue
-		waitQueue.queue.add(thread);
-		
-		//Creating a timer along with the thread to keep track of which threads have been in the queue longer.
-		threadTimer = Machine.timer().getTime();
-		threadQueue = waitQueue;	
-		
+		//Set our queue
+		this.queue = waitQueue;
+
 	}
 
 	/**
@@ -367,65 +377,33 @@ public class PriorityScheduler extends Scheduler {
 	 * @see	nachos.threads.ThreadQueue#acquire
 	 * @see	nachos.threads.ThreadQueue#nextThread
 	 */
-	
 	public void acquire(PriorityQueue waitQueue) {
-		Lib.assertTrue(Machine.interrupt().disabled());
 	    // implement me
 		
-		//Create a temporary timer of how long a thread has been waiting
-		int tempTimer;
-		tempTimer = 0;
+		//Add thread to the waiting threads
+		waitThreads.add(waitQueue);
+
+	}	
+	
+	//Helper function for the comparator, Threadstate comparison. Method was found on GeeksForGeeks
+	public int compareTo(ThreadState a) {
 		
-		//Ensure the queue is not empty
-		if(threadQueue != null){
-			if(!threadQueue.queue.isEmpty()){
-				
-				//Check transferPriority is true
-					if(waitQueue.transferPriority == true){
-						
-						//Make sure there is another thread on the queue, size of 2 or more
-						if(2 <= threadQueue.queue.size()){
-				
-						//for loop to scan through the queue and sort the waiting times of the threads on it
-						for(int i = 0; i < threadQueue.queue.size(); i++){
-							if (getThreadState(threadQueue.queue.get(i)).threadTimer < getThreadState(threadQueue.queue.get(tempTimer)).threadTimer) {
-								tempTimer = i;
-								
-							}
-						}
-						
-						//Check that our priority isn't goint to go over the maximum priority that is allowed
-						if(priorityMaximum > getThreadState(waitQueue.queue.get(tempTimer)).getPriority()){
-							getThreadState(waitQueue.queue.get(tempTimer)).setPriority(getThreadState(thread).getPriority());
-						}	
-					}	
-				}		
-					
-			//Remove the thread from the queue after it has run
-	    waitQueue.queue.remove(thread);
-	    
-	    //Set the queue as Null when all threads are finished.
-	    threadQueue = null; 	
-			}	
-		}
+		return new Integer(a.getPriority()).compareTo(this.getPriority());
 	}
 
-	/** The thread with which this object is associated. */	   
-	protected KThread thread;
-	/** The priority of the associated thread. */
-	protected int priority;
-	
-	//Set a new Priority Queue
-	public PriorityQueue threadQueue;
-	
-	//Global timer variable to keep a track of how long a thread has been in the queue
-	public double threadTimer = 0;
-
-
     }
-   
     
-
-
+    
+    //Helper function for comparing the priority queue
+    public static class compare implements Comparator<ThreadState> {
+    	
+		public int compare(ThreadState a, ThreadState b) {
+			
+			int x = a.getEffectivePriority();
+			int y = b.getEffectivePriority();
+			
+			return new Integer(x).compareTo(y);
+		}
+	}
     
 }
